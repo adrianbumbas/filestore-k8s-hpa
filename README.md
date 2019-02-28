@@ -34,3 +34,6 @@ Replace the following parameters in `filestore-hpa.yml` file:
 - `[IP_ADDRESS]` is the IP address for the Cloud Filestore instance.
 - `[STORAGE]` is the size of the fileshare on the Cloud Filestore instance
 - `[FILESERVER]` is the name of the share used as Stackdriver resource label
+
+And then apply the configuration:
+`kubectl apply -f filestore-hpa.yml`
