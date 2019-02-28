@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: custom-metrics-filestore-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      custom: metrics
+  template:
+    metadata:
+      labels:
+        custom: metrics
+    spec:
+      hostNetwork: true
+      containers:
+        - name: filestore-metrics-exporter
+          image: gcr.io/hpa-filestore/amonsoftware/filestore-metrics:0.0.1
+          imagePullPolicy: Always
+          volumeMounts:
+#            The metrics app will count the files from this path, do not change it
+            - mountPath: /mnt/fileserver
+              name: fileserver-pvc
+          ports:
+            - name: http-metrics
+              containerPort: 9309
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9309
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+        - name: prometheus-to-sd
+          image: gcr.io/google-containers/prometheus-to-sd:v0.4.2
+          ports:
+            - name: profiler
+              containerPort: 6060
+          command:
+            - /monitor
+            - --stackdriver-prefix=custom.googleapis.com
+#           Configure here the REST API
+            - --source=filestore-exporter:http://localhost:9309/share_name/[FILESERVER]/
+            - --pod-id=$(POD_NAME)
+            - --namespace-id=$(POD_NAMESPACE)
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+      volumes:
+        - name: fileserver-pvc
+          persistentVolumeClaim:
+            claimName: fileserver-claim
+            readOnly: true
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: fileserver
+spec:
+  capacity:
+    storage: [STORAGE]
+  accessModes:
+    - ReadOnlyMany
+  nfs:
+    path: /[FILESHARE]
+    server: [IP_ADDRESS]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fileserver-claim
+spec:
+  accessModes:
+    - ReadOnlyMany
+  storageClassName: ""
+  resources:
+    requests:
+      storage: [STORAGE]
+---
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: storage-hpa
+spec:
+  minReplicas: 1
+#  It will not scale more than this number even if there are more files
+  maxReplicas: 5
+  metrics:
+    - external:
+        metricName: custom.googleapis.com|filestore-exporter|files_count
+        metricSelector:
+          matchLabels:
+#            This must match with the name from the metric exporter app URL
+            metric.labels.share_name: [FILESERVER]
+#            One file = one pod
+        targetAverageValue: "1"
+      type: External
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: [DEPLOYMENT]
