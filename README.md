@@ -36,4 +36,5 @@ Replace the following parameters in `filestore-hpa.yml` file:
 - `[FILESERVER]` is the name of the share used as Stackdriver resource label
 
 And then apply the configuration:
+
 `kubectl apply -f filestore-hpa.yml`
